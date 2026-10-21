@@ -959,6 +959,27 @@ vc_same_ns:
 			return DNS_RES_STATUS_CONNECTION_REFUSED;
 		}
 
+#ifdef DARLING
+		/*
+		 * Bound the blocking reply read so a stalled server falls through to
+		 * the next one. Per read() call, not per query. No SO_SNDTIMEO: Darling
+		 * passes it to Linux without converting the Darwin timeval.
+		 */
+		{
+			struct timeval tv;
+			memset(&tv, 0, sizeof(tv));
+			tv.tv_sec = statp->retrans > 0 ? statp->retrans : RES_TIMEOUT;
+			if (tv.tv_sec > RES_MAXRETRANS) tv.tv_sec = RES_MAXRETRANS;
+			if (setsockopt(statp->_vcsock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+			{
+				*terrno = errno;
+				Perror(statp, stderr, "setsockopt(vc, SO_RCVTIMEO)", errno);
+				res_nclose(statp);
+				return DNS_RES_STATUS_CONNECTION_FAILED;
+			}
+		}
+#endif
+
 		statp->_flags |= RES_F_VC;
 	}
 
